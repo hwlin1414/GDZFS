@@ -1,0 +1,35 @@
+#!/bin/sh
+
+GDrive=`which gdrive`
+ZFSSnap="gdrive"
+LocalZFS="$1"
+GDriveFile="$2"
+
+if [ "$#" -lt "2" ]; then
+    echo "Usage: $0 {LocalZFS} {GDriveFile}"
+    exit 2
+fi
+
+GDriveFileID=`${GDrive} list -m 0 --name-width 0 --absolute --no-header --bytes | grep ${GDriveFile} | grep "bin" | head -1 | awk '{print $1}'`
+LocalZFSList=`zfs list -H -t all ${LocalZFS} 2>/dev/null | awk '{print $1}'`
+
+# Check if Local ZFS exists
+if [ -n "${LocalZFSList}" ]; then
+    echo "LocalZFS exists"
+    exit 1
+fi
+
+# Check if GDrive file exists
+if [ -z "${GDriveFileID}" ]; then
+    echo "Can't find GDriveFile"
+    exit 1
+fi
+
+# Read Password from user
+stty -echo
+read -p "Password: " password
+echo ""
+stty echo
+
+# Fetch from GDrive
+${GDrive} download --stdout ${GDriveFileID} | openssl enc -d -aes-256-cbc -pass "pass:${password}" | zfs recv ${LocalZFS}

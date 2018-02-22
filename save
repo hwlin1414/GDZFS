@@ -1,0 +1,49 @@
+#!/bin/sh
+
+GDrive=`which gdrive`
+ZFSSnap="gdrive"
+LocalZFS="$1"
+GDriveFile="$2"
+
+if [ "$#" -lt "2" ]; then
+    echo "Usage: $0 {LocalZFS} {GDriveFile}"
+    exit 2
+fi
+
+GDriveFileName=${GDriveFile##*/}
+GDriveFilePath=${GDriveFile%/*}
+GDriveFilePathID=`${GDrive} list -m 0 --name-width 0 --absolute --no-header --bytes | grep ${GDriveFilePath} | grep "dir" | head -1 | awk '{print $1}'`
+OldFileID=`${GDrive} list -m 0 --name-width 0 --absolute --no-header --bytes | grep ${GDriveFile} | grep "bin" | head -1 | awk '{print $1}'`
+OldZFS=`zfs list -H -t all ${LocalZFS}@${ZFSSnap} 2>/dev/null | awk '{print $1}'`
+
+# Check if parent dir exists
+if [ -z "${GDriveFilePathID}" ]; then
+    echo "Can't find GDriveFile parent directory ID"
+    exit 1
+fi
+
+# Check if any modify
+if [ -n "${OldZFS}" ]; then
+    # if ${OldZFS} non zero (exist)
+    Modified=`zfs diff ${OldZFS} | wc -l`
+    if [ "${Modified}" -eq "0" ]; then
+        echo "Not modified, no need to save."
+        exit 0
+    fi
+    zfs destroy ${OldZFS}
+fi
+
+# Read Password from user
+stty -echo
+read -p "Password: " password
+echo ""
+stty echo
+
+# Saving to GDrive
+zfs snapshot ${LocalZFS}@${ZFSSnap}
+zfs send ${LocalZFS}@${ZFSSnap} | openssl enc -aes-256-cbc -pass "pass:${password}" | ${GDrive} upload - -p ${GDriveFilePathID} ${GDriveFileName}
+
+# Delete old file
+if [ -n "${OldFileID}" ]; then
+    ${GDrive} delete ${OldFileID}
+fi

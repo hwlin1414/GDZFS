@@ -1,0 +1,31 @@
+#!/bin/sh
+
+ZFSSnap="gdrive"
+LocalZFS="$1"
+
+if [ "$#" -lt "1" ]; then
+    echo "Usage: $0 {LocalZFS}"
+    exit 2
+fi
+
+ZFS=`zfs list -H -t all ${LocalZFS} 2>/dev/null | awk '{print $1}'`
+OldZFS=`zfs list -H -t all ${LocalZFS}@${ZFSSnap} 2>/dev/null | awk '{print $1}'`
+
+# Check if ZFS exists
+if [ -z "${ZFS}" ]; then
+    echo "LocalZFS not exist."
+    exit 1
+fi
+
+# Check if any modify
+if [ -n "${OldZFS}" ]; then
+    # if ${OldZFS} non zero (exist)
+    Modified=`zfs diff ${OldZFS} | wc -l`
+    if [ "${Modified}" -eq "0" ]; then
+        zfs destroy -r "${LocalZFS}"
+        exit 0
+    fi
+fi
+
+echo "Please save to GDrive then destroy."
+exit 1
